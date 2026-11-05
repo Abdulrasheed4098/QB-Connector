@@ -1,0 +1,93 @@
+name: Build Windows installer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 32-bit Python: QuickBooks 2015 and its SDK (QBXMLRP2) are 32-bit COM
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x86
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller==6.10.0
+
+      - name: Tests
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p test-output
+          python -c "import struct; print('python bits:', struct.calcsize('P')*8)" | tee test-output/tests.log
+          python tests/test_qbxml.py 2>&1 | tee -a test-output/tests.log
+          python tests/test_import.py 2>&1 | tee -a test-output/tests.log
+          python main.py --selftest 2>&1 | tee -a test-output/tests.log
+
+      - name: Build app
+        run: >
+          python -m PyInstaller --noconfirm --clean --windowed --name QBConnector
+          --icon assets/qbconnector.ico --add-data "assets;assets"
+          --hidden-import win32com.client --hidden-import pythoncom
+          --collect-submodules qbconnector main.py
+
+      - name: Check packaged app starts
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\QBConnector\QBConnector.exe -ArgumentList "--selftest" -PassThru -Wait
+          $s = Get-Content selftest.txt -Raw; Write-Output $s
+          Copy-Item selftest.txt test-output\selftest-packaged.txt
+          if ($p.ExitCode -ne 0) { throw "selftest failed: $($p.ExitCode)" }
+          if ($s -notmatch "pywin32 ok") { throw "pywin32 missing" }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+
+      - name: Publish installer as a GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v1.0.0-build${{ github.run_number }}"
+          (cd dist && 7z a -tzip ../installer/QBConnector-Portable.zip QBConnector >/dev/null)
+          gh release create "$TAG" installer/*.exe installer/QBConnector-Portable.zip --title "QB Connector build ${{ github.run_number }}" \
+            --notes "Download QBConnector-Setup-*.exe below and run it. Or download QBConnector-Portable.zip, unzip and run QBConnector.exe without installing. If Windows shows 'Windows protected your PC', click More info -> Run anyway."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QBConnector-Setup
+          path: installer/*.exe
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-output
+          path: test-output/
+
+      - name: Save test results to the ci-output branch
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /tmp/out && cp -r test-output/* /tmp/out/ 2>/dev/null || true
+          echo "run ${{ github.run_number }} ${{ job.status }} $(date -u)" > /tmp/out/STATUS.txt
+          cd /tmp/out
+          git init -q -b ci-output
+          git config user.name "ci"; git config user.email "ci@users.noreply.github.com"
+          git add -A && git commit -qm "test output run ${{ github.run_number }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-output
