@@ -98,6 +98,23 @@ def run():
         ag.auto_var.set(False)
         ag._auto_changed()
         note("agent auto-post ok")
+        # read-only question: answered without asking; write requests are refused
+        q = {"request_id": "q1", "title": "open bills", "queries": [
+            "open_bills", "account_balances",
+            {"name": "sneaky", "qbxml": "<BillAddRq><BillAdd/></BillAddRq>"},
+            {"name": "vendors", "qbxml": "<VendorQueryRq><MaxReturned>5</MaxReturned></VendorQueryRq>"}]}
+        with open(os.path.join(agent_dir, "Inbox", "q1.json"), "w") as f:
+            json.dump(q, f)
+        ag.scan(quiet=True)
+        t0 = time.time()
+        while time.time() - t0 < 30 and not os.path.exists(os.path.join(agent_dir, "Results", "q1.result.json")):
+            app.update()
+            time.sleep(0.05)
+        wait()
+        qa = json.load(open(os.path.join(agent_dir, "Results", "q1.result.json")))["answers"]
+        assert qa["open_bills"]["count"] == 2 and qa["open_bills"]["rows"][0]["ref"] == "INV-9", qa
+        assert "error" in qa["sneaky"] and "qbxml_answer" in qa["vendors"], qa
+        note("agent questions ok")
         # remove the agent's invoice from the count below
         with open(storage.LOG_FILE, encoding="utf-8-sig") as f:
             lines = f.read().splitlines()

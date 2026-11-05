@@ -311,6 +311,15 @@ class App(tk.Tk):
 
         self.run_bg(f"Loading unpaid bills for {vendor}…", work, ok)
 
+    def run_query(self, req, done):
+        from .. import agent
+
+        def work(report):
+            with self.open_qb() as qb:
+                return agent.run_queries(qb, req)
+
+        self.run_bg(f"Answering: {req.title}…", work, done)
+
     def post_batches(self, batches, done, progress=None, source="Excel"):
         company = self.lists.company if self.lists else ""
         holder = {}

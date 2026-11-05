@@ -278,14 +278,35 @@ class AgentTab(ImportTab):
             self.app.status("Automatic posting is ON: requests from Claude are posted as soon as they arrive.")
             self.auto_post_next()
 
+    def answer_queries(self):
+        """Read-only question requests (open bills, balances...) are answered without asking."""
+        if self.app.busy or self.app.lists is None:
+            return False
+        for r in self.requests:
+            if r.queries and not r.error and not getattr(r, "answered", False):
+                r.answered = True
+                company = self.app.lists.company
+
+                def done(result, r=r):
+                    agent.finish_query(self.folder, r, result, company)
+                    self.app.status(f"Answered Claude's question: {r.title}")
+                    self.scan()
+                    self.after(300, self.auto_post_next)
+
+                self.app.run_query(r, done)
+                return True
+        return False
+
     def auto_post_next(self):
         """Post the first waiting request on its own, if automatic posting is on.
         Only when every entry checks out; otherwise it waits for review and a .check.json
         with the problems is written to Results for Claude to fix."""
+        if self.answer_queries():
+            return
         if not self.auto_var.get() or self.app.busy or self.app.lists is None:
             return
         for r in self.requests:
-            if r.error or getattr(r, "auto_tried", False):
+            if r.error or r.queries is not None or getattr(r, "auto_tried", False):
                 continue
             r.auto_tried = True
             batches = r.build(self.app.lists)

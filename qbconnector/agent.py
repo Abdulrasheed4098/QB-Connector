@@ -25,6 +25,10 @@ import json
 import os
 import shutil
 
+import re
+import xml.etree.ElementTree as ET
+
+from . import qbxml
 from .importer import Batch
 from .records import CHECKERS, KINDS, check
 from .util import InputError
@@ -60,10 +64,12 @@ class Request:
         try:
             with open(path, encoding="utf-8-sig") as f:
                 self.data = json.load(f)
-            if not isinstance(self.data, dict) or not isinstance(self.data.get("records"), list):
-                raise ValueError("file must contain a 'records' list")
+            if not isinstance(self.data, dict) or not (isinstance(self.data.get("records"), list)
+                                                       or isinstance(self.data.get("queries"), list)):
+                raise ValueError("file must contain a 'records' or 'queries' list")
         except Exception as e:
             self.error = f"Cannot read request: {e}"
+        self.queries = self.data.get("queries") if isinstance(self.data, dict) else None
         self.title = str(self.data.get("title") or os.path.splitext(self.name)[0])
         self.company = str(self.data.get("company") or "")
         self.request_id = str(self.data.get("request_id") or os.path.splitext(self.name)[0])
@@ -95,6 +101,137 @@ class Request:
             b.result = (b.error or "").replace("\n", " | ")
             self.batches.append(b)
         return self.batches
+
+
+# ------------------------------------------------------------------ read-only queries
+# Request: {"request_id": "...", "title": "...", "queries": ["open_bills", "open_invoices",
+#           {"name": "x", "qbxml": "<VendorQueryRq>...</VendorQueryRq>"}]}
+# Only *QueryRq requests are allowed (nothing can be added, changed or deleted). They run
+# without asking, as soon as the app is connected. Answers go to Results/<name>.result.json
+# (named presets as tidy JSON, custom ones as the raw qbXML answer).
+
+PRESETS = {
+    "open_bills": ("<BillQueryRq><PaidStatus>NotPaidOnly</PaidStatus>"
+                   + "".join(f"<IncludeRetElement>{t}</IncludeRetElement>" for t in
+                             ("TxnID", "VendorRef", "TxnDate", "RefNumber", "DueDate", "AmountDue",
+                              "OpenAmount", "Memo", "APAccountRef"))
+                   + "</BillQueryRq>"),
+    "open_invoices": ("<InvoiceQueryRq><PaidStatus>NotPaidOnly</PaidStatus>"
+                      + "".join(f"<IncludeRetElement>{t}</IncludeRetElement>" for t in
+                                ("TxnID", "CustomerRef", "ClassRef", "TxnDate", "RefNumber", "DueDate",
+                                 "Subtotal", "BalanceRemaining", "Memo"))
+                      + "</InvoiceQueryRq>"),
+    "account_balances": ("<AccountQueryRq>"
+                         + "".join(f"<IncludeRetElement>{t}</IncludeRetElement>" for t in
+                                   ("FullName", "AccountType", "AccountNumber", "TotalBalance"))
+                         + "</AccountQueryRq>"),
+    "vendor_balances": ("<VendorQueryRq>"
+                        + "".join(f"<IncludeRetElement>{t}</IncludeRetElement>" for t in
+                                  ("Name", "Balance", "IsActive"))
+                        + "</VendorQueryRq>"),
+    "customer_balances": ("<CustomerQueryRq>"
+                          + "".join(f"<IncludeRetElement>{t}</IncludeRetElement>" for t in
+                                    ("FullName", "TotalBalance", "IsActive"))
+                          + "</CustomerQueryRq>"),
+}
+
+_WRITE = re.compile(r"<\s*\w*(Add|Mod|Del|Void|Cleared)\w*Rq", re.I)
+
+
+def check_query(xml_text):
+    """Allow only read-only *QueryRq requests."""
+    if _WRITE.search(xml_text):
+        raise ValueError("only read-only Query requests are allowed")
+    try:
+        root = ET.fromstring(f"<x>{xml_text}</x>")
+    except ET.ParseError as e:
+        raise ValueError(f"not valid XML: {e}")
+    tags = [c.tag for c in root]
+    if not tags or any(not t.endswith("QueryRq") for t in tags):
+        raise ValueError("every request must be a ...QueryRq (e.g. BillQueryRq)")
+    return xml_text
+
+
+def _ref(n, path):
+    v = n.find(path)
+    return v.text if v is not None else ""
+
+
+def _tidy(name, rs):
+    rows = []
+    for n in rs.rets:
+        if name == "open_bills":
+            rows.append({"vendor": _ref(n, "VendorRef/FullName"), "date": _ref(n, "TxnDate"),
+                         "ref": _ref(n, "RefNumber"), "due": _ref(n, "DueDate"),
+                         "amount": _ref(n, "AmountDue"), "open": _ref(n, "OpenAmount"),
+                         "memo": _ref(n, "Memo"), "ap_account": _ref(n, "APAccountRef/FullName"),
+                         "txn_id": _ref(n, "TxnID")})
+        elif name == "open_invoices":
+            rows.append({"customer": _ref(n, "CustomerRef/FullName"), "class": _ref(n, "ClassRef/FullName"),
+                         "date": _ref(n, "TxnDate"), "ref": _ref(n, "RefNumber"), "due": _ref(n, "DueDate"),
+                         "amount": _ref(n, "Subtotal"), "open": _ref(n, "BalanceRemaining"),
+                         "memo": _ref(n, "Memo"), "txn_id": _ref(n, "TxnID")})
+        elif name == "account_balances":
+            rows.append({"account": _ref(n, "FullName"), "type": _ref(n, "AccountType"),
+                         "number": _ref(n, "AccountNumber"), "balance": _ref(n, "TotalBalance")})
+        elif name == "vendor_balances":
+            rows.append({"vendor": _ref(n, "Name"), "balance": _ref(n, "Balance"),
+                         "active": _ref(n, "IsActive")})
+        elif name == "customer_balances":
+            rows.append({"customer": _ref(n, "FullName"), "balance": _ref(n, "TotalBalance"),
+                         "active": _ref(n, "IsActive")})
+    return rows
+
+
+def run_queries(qb, req):
+    """Run a query request on an open connection. Returns the result dict."""
+    out = {"request_id": req.request_id, "title": req.title, "file": req.name, "outcome": "Answered",
+           "company": "", "answered_at": _dt.datetime.now().isoformat(timespec="seconds"), "answers": {}}
+    for i, q in enumerate(req.queries or [], 1):
+        if isinstance(q, str):
+            name, xml_text = q, PRESETS.get(q)
+            if xml_text is None:
+                out["answers"][name] = {"error": f"unknown preset; use one of {', '.join(PRESETS)}"}
+                continue
+        else:
+            name = str(q.get("name") or f"query{i}")
+            try:
+                xml_text = check_query(str(q.get("qbxml") or ""))
+            except ValueError as e:
+                out["answers"][name] = {"error": str(e)}
+                continue
+        try:
+            answer = qb.send(qbxml.envelope(xml_text, on_error="continueOnError"))
+        except Exception as e:
+            out["answers"][name] = {"error": str(e)}
+            continue
+        rs_list = qbxml.parse_response(answer)
+        if isinstance(q, str):
+            rs = rs_list[0] if rs_list else None
+            if rs is None or not rs.ok:
+                out["answers"][name] = {"error": rs.message if rs else "no answer"}
+            else:
+                rows = _tidy(name, rs)
+                out["answers"][name] = {"count": len(rows), "rows": rows}
+        else:
+            out["answers"][name] = {"qbxml_answer": answer}
+    return out
+
+
+def finish_query(folder, req, result, company):
+    result["company"] = company
+    stem = os.path.splitext(req.name)[0]
+    rpath = os.path.join(folder, "Results", f"{stem}.result.json")
+    with open(rpath, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=1)
+    dest = os.path.join(folder, "Done", req.name)
+    if os.path.exists(dest):
+        dest = os.path.join(folder, "Done", f"{stem}_{_dt.datetime.now():%Y%m%d%H%M%S}.json")
+    try:
+        shutil.move(req.path, dest)
+    except OSError:
+        pass
+    return rpath
 
 
 def pending(folder):

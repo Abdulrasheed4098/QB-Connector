@@ -78,6 +78,9 @@ def all_requests():
             r = check(kind, raw, None)
             out.append((kind, qbxml.build(r)))
     out.append(("query", qbxml.open_bills_query("Pepsi Co")))
+    from qbconnector.agent import PRESETS
+    for name, q in PRESETS.items():
+        out.append((name, q))
     for q in qbxml.lists_query():
         out.append(("query", q))
     return out
