@@ -85,7 +85,9 @@ def run():
                 json.dump(d, f)
         ag.scan(quiet=True)
         t0 = time.time()
-        while time.time() - t0 < 10 and not os.path.exists(os.path.join(agent_dir, "Results", "auto1.result.json")):
+        while time.time() - t0 < 30 and not (
+                os.path.exists(os.path.join(agent_dir, "Results", "auto1.result.json"))
+                and os.path.exists(os.path.join(agent_dir, "Results", "auto2.check.json"))):
             app.update()
             time.sleep(0.05)
         wait()
