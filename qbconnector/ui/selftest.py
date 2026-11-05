@@ -26,6 +26,8 @@ def run():
         storage.LOG_FILE = os.path.join(storage.FOLDER, "posting_log.csv")
         storage.ERROR_FOLDER = os.path.join(storage.FOLDER, "errors")
         storage.SETTINGS_FILE = os.path.join(storage.FOLDER, "settings.json")
+        agent_dir = os.path.join(os.environ["APPDATA"], "agent")
+        os.environ["QBC_AGENT_FOLDER"] = agent_dir
         from .app import App
         app = App(demo=True)
         msgs = []
@@ -46,6 +48,36 @@ def run():
         assert app.lists and app.lists.company == "Arcadian Cafe", "lists not loaded"
         note(f"lists: {app.lists.summary()}")
         tabs = {type(t).__name__: t for t in app.tabs}
+
+        # --- Agent Inbox: a request file arrives, is checked, posted, and a result is written
+        import json
+        assert os.path.exists(os.path.join(agent_dir, "lists - Arcadian Cafe.json")), "lists snapshot missing"
+        req = {"request_id": "test-1", "title": "Oct bank discount", "company": "Arcadian Cafe",
+               "records": [
+                   {"kind": "invoice", "customer": "MCB Bank", "date": "31/10/2026", "ref": "ARC-1023",
+                    "cls": "Store 1", "lines": [{"item": "Bank Discount Receivable", "amount": "45250.50"}]},
+                   {"kind": "invoice", "customer": "Nobody Bank", "date": "31/10/2026",
+                    "lines": [{"item": "Bank Discount Receivable", "amount": "1"}]},
+                   {"kind": "teleport"}]}
+        with open(os.path.join(agent_dir, "Inbox", "req1.json"), "w") as f:
+            json.dump(req, f)
+        ag = tabs["AgentTab"]
+        ag.scan()
+        assert ag.current and [b.status for b in ag.batches] == ["Ready", "Error", "Error"], \
+            [(b.status, b.error) for b in ag.batches]
+        ag.post()
+        wait()
+        res = json.load(open(os.path.join(agent_dir, "Results", "req1.result.json")))
+        assert res["added"] == 1 and res["entries"][0]["status"] == "Added", res
+        assert os.path.exists(os.path.join(agent_dir, "Done", "req1.json")) and not ag.requests
+        sent = open(storage.LOG_FILE, encoding="utf-8-sig").read()
+        assert "ARC-1023" in sent and "Agent" in sent
+        note("agent inbox ok")
+        # remove the agent's invoice from the count below
+        with open(storage.LOG_FILE, encoding="utf-8-sig") as f:
+            lines = f.read().splitlines()
+        with open(storage.LOG_FILE, "w", encoding="utf-8-sig") as f:
+            f.write("\n".join(ln for ln in lines if ",Agent" not in ln) + "\n")
 
         inv = tabs["InvoiceTab"]
         inv.f.set("customer", "MCB Bank")

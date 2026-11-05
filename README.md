@@ -8,7 +8,7 @@ through the official QuickBooks SDK. You don't need to type entries into QuickBo
 |---|---|
 | Items: Inventory Part, Non-inventory Part, Service, Other Charge (incl. sub-items) | Enter Bill (expense and item lines, class, customer:job) |
 | Vendors (address, NTN, terms, opening balance) | Pay Bills (shows the vendor's unpaid bills; full or part payment) |
-| Customers / Jobs | Create Invoice (bank discount claims: bank as Customer:Job, Class, Bank Discount Receivable item; "ARC" is removed from invoice numbers) |
+| Customers / Jobs | Create Invoice (bank discount claims: bank as Customer:Job, Class, Bank Discount Receivable item; invoice number saved exactly as typed, or QuickBooks numbers it) |
 | | Write Cheque (or "To be printed") |
 | Accounts (all types, sub-accounts, opening balance) | Journal Entry (checks debits = credits) |
 | | Make Deposit |
@@ -42,6 +42,14 @@ all your exact names) → fill it → *Choose Excel file* → check the rows →
 For transactions with several lines, give the rows the same **Group** number.
 A `... - RESULT.xlsx` copy is saved with a Status for every row. Fix any errors in it and import it
 again; rows already marked **Added** are skipped, so nothing is posted twice.
+
+## Agent Inbox (ask Claude to do it)
+Tell Claude in chat what to enter, e.g. *"invoice MCB Bank 45,250 October discount share, Store 1"*.
+Claude writes the entries as a request file into `Documents\QB Connector Agent\Inbox`.
+The app shows it in the **Agent Inbox** tab with every entry checked. Click **Post** or **Reject**.
+Nothing reaches QuickBooks without your click. Results go to `Results\` so Claude can confirm what was posted.
+On every Connect, the app also saves `lists - <company>.json` there, so Claude uses your exact names.
+The Claude desktop app needs that folder connected. See `HOW_TO.txt` in the folder for the file format.
 
 ## Data
 `%APPDATA%\ArcadianQBConnector\`: `settings.json`, `posting_log.csv`, and `errors\` (the exact

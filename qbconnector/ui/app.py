@@ -12,7 +12,7 @@ from ..qbxml import QBError
 from ..session import QBConnectError, QBConnection
 from .forms import (AccountTab, BillTab, ChequeTab, CustomerTab, DepositTab, InvoiceTab, ItemTab,
                     JournalTab, PayBillsTab, TransferTab, VendorTab)
-from .tabs_extra import ImportTab, LogTab
+from .tabs_extra import AgentTab, ImportTab, LogTab
 
 NAVY = "#14213d"
 
@@ -35,7 +35,8 @@ class App(tk.Tk):
         for cls, label in [(InvoiceTab, "Invoice"), (BillTab, "Enter Bill"), (PayBillsTab, "Pay Bills"), (ChequeTab, "Write Cheque"),
                            (JournalTab, "Journal Entry"), (DepositTab, "Deposit"), (TransferTab, "Transfer"),
                            (ItemTab, "Item"), (VendorTab, "Vendor"), (CustomerTab, "Customer"),
-                           (AccountTab, "Account"), (ImportTab, "Excel Import"), (LogTab, "Log")]:
+                           (AccountTab, "Account"), (ImportTab, "Excel Import"),
+                           (AgentTab, "Agent Inbox"), (LogTab, "Log")]:
             t = cls(self.nb, self)
             self.nb.add(t, text=f"  {label}  ")
             self.tabs.append(t)
@@ -307,7 +308,7 @@ class App(tk.Tk):
 
         self.run_bg(f"Loading unpaid bills for {vendor}…", work, ok)
 
-    def post_batches(self, batches, done, progress=None):
+    def post_batches(self, batches, done, progress=None, source="Excel"):
         company = self.lists.company if self.lists else ""
         holder = {}
 
@@ -317,7 +318,7 @@ class App(tk.Tk):
                     for i, b in enumerate(batches, 1):
                         report(f"Posting {i} of {len(batches)}…")
                         try:
-                            b.result = poster.post(qb, b.record, company, "Excel")
+                            b.result = poster.post(qb, b.record, company, source)
                             b.status = "Added"
                         except QBError as e:
                             b.status, b.result = "Rejected", e.message

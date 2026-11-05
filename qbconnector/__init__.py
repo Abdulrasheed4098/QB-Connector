@@ -2,5 +2,5 @@
 APP_TITLE = "Arcadian QB Connector"
 # Must stay exactly the same: QuickBooks remembers the authorization by this name.
 APP_NAME = "Arcadian QB Connector"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 QBXML_VERSION = "13.0"   # QuickBooks Enterprise 15.0 (2015) supports up to 13.0

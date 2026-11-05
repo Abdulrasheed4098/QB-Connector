@@ -1,7 +1,7 @@
 ; Inno Setup script - builds QBConnector-Setup.exe
 #define AppName "Arcadian QB Connector"
 #ifndef AppVersion
-  #define AppVersion "1.1.0"
+  #define AppVersion "1.2.0"
 #endif
 
 [Setup]

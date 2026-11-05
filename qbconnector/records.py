@@ -391,18 +391,6 @@ def check_bill(raw, lists=None):
     return r
 
 
-def _strip_arc(v):
-    """Invoice numbers must not contain the word ARC: 'ARC-1023' / 'arc 1023' -> '1023'."""
-    import re
-    s = clean(v)
-    if s is None:
-        return None
-    s = re.sub(r"(?<![a-z])arc(?![a-z])", "", s, flags=re.I)
-    s = re.sub(r"^[\s\-_/.#:]+|[\s\-_/.#:]+$", "", s)
-    s = re.sub(r"[\s\-_/.#:]{2,}", "-", s)
-    return s or None
-
-
 def check_invoice(raw, lists=None):
     """Customer invoice, e.g. the bank-discount claim: Customer:Job = bank,
     Class = Store 1, Item = Bank Discount Receivable, Amount = bank's share."""
@@ -411,7 +399,7 @@ def check_invoice(raw, lists=None):
         "kind": "invoice",
         "customer": _ref(p, lists, "customers", "Customer:Job", raw.get("customer"), required=True),
         "date": p.run(parse_date, raw.get("date"), "Invoice Date"),
-        "ref": p.text("Invoice No", _strip_arc(raw.get("ref")), MAX["inv_ref"]),
+        "ref": p.text("Invoice No", raw.get("ref"), MAX["inv_ref"]),
         "cls": _ref(p, lists, "classes", "Class", raw.get("cls")),
         "po":p.text("P.O. No", raw.get("po"), MAX["po"]),
         "terms": _ref(p, lists, "terms", "Terms", raw.get("terms")),

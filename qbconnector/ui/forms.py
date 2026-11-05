@@ -313,7 +313,7 @@ class InvoiceTab(BaseTab):
     title = "Create Invoice"
     hint = ("Bank discount claim: Customer:Job = the bank, Class = the store, Item = Bank Discount "
             "Receivable, Amount = the bank's share. Lines without a class use the invoice Class. "
-            "Class and Item are remembered for the next invoice. The word ARC is removed from Invoice No.")
+            "Class and Item are remembered for the next invoice. Invoice No is saved exactly as typed; leave it blank and QuickBooks gives its own next number.")
 
     def build(self):
         st = self.app.settings
