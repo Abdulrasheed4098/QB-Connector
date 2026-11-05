@@ -66,6 +66,8 @@ SAMPLES = {
     "paybill": [dict(vendor="Pepsi Co", date="05/11/2026", bank="MCB Gulberg", ref="654321",
                      memo="Oct bills", bills=[dict(txn_id="1A2B-123", amount="1000"),
                                               dict(txn_id="1A2C-124", amount="250.5")]),
+                dict(vendor="Pepsi Co", date="05/11/2026", bank="MCB Gulberg", memo="cash, no cheque no",
+                     bills=[dict(txn_id="1A2B-123", amount="10")]),
                 dict(vendor="Pepsi Co", date="05/11/2026", bank="MCB Gulberg", to_print="y",
                      bills=[dict(txn_id="1A2B-123", amount="10")])],
 }

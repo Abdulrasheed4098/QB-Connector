@@ -204,7 +204,13 @@ def transfer_add(r):
 
 def paybill_add(r):
     """All bills must already have txn_id (see poster.resolve_bills)."""
-    pay = el("IsToBePrinted", True) if r.get("to_print") else el("RefNumber", r.get("ref"))
+    # QuickBooks requires one of IsToBePrinted / RefNumber; a cash payment has neither
+    if r.get("to_print"):
+        pay = el("IsToBePrinted", True)
+    elif r.get("ref"):
+        pay = el("RefNumber", r["ref"])
+    else:
+        pay = el("IsToBePrinted", False)
     applied = "".join("<AppliedToTxnAdd>" + el("TxnID", b["txn_id"]) + amt("PaymentAmount", b["amount"])
                       + "</AppliedToTxnAdd>" for b in r["bills"])
     body = (ref("PayeeEntityRef", r["vendor"]) + el("TxnDate", r["date"])
@@ -329,6 +335,14 @@ def read_open_bills(rs):
             "due_date": txt(n, "DueDate"), "amount_due": txt(n, "AmountDue", "0"),
             "open_amount": txt(n, "OpenAmount", "0"), "memo": txt(n, "Memo"),
         })
+    for b in out:
+        # QuickBooks 2015 can report the vendor's whole balance as OpenAmount; a bill can never
+        # owe more than its own amount
+        try:
+            if float(b["open_amount"]) > float(b["amount_due"]):
+                b["open_amount"] = b["amount_due"]
+        except ValueError:
+            pass
     out.sort(key=lambda b: (b["date"], b["ref"]))
     return out
 

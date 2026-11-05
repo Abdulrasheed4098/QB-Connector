@@ -157,13 +157,22 @@ def _ref(n, path):
     return v.text if v is not None else ""
 
 
+def _min_amount(a, b):
+    """QuickBooks 2015 may report the vendor balance as a bill's OpenAmount."""
+    try:
+        return a if float(a) <= float(b) else b
+    except ValueError:
+        return a
+
+
 def _tidy(name, rs):
     rows = []
     for n in rs.rets:
         if name == "open_bills":
             rows.append({"vendor": _ref(n, "VendorRef/FullName"), "date": _ref(n, "TxnDate"),
                          "ref": _ref(n, "RefNumber"), "due": _ref(n, "DueDate"),
-                         "amount": _ref(n, "AmountDue"), "open": _ref(n, "OpenAmount"),
+                         "amount": _ref(n, "AmountDue"),
+                         "open": _min_amount(_ref(n, "OpenAmount"), _ref(n, "AmountDue")),
                          "memo": _ref(n, "Memo"), "ap_account": _ref(n, "APAccountRef/FullName"),
                          "txn_id": _ref(n, "TxnID")})
         elif name == "open_invoices":
