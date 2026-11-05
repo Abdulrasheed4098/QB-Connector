@@ -30,6 +30,11 @@ HINTS = {
     0x8004041D: "This app is not allowed to log in automatically. In QuickBooks: Edit > Preferences > "
                 "Integrated Applications > select 'Arcadian QB Connector' > Properties > tick "
                 "'Allow this application to login automatically' and choose Admin.",
+    0x80040430: "This app is not allowed to log in to this company file automatically. In QuickBooks "
+                "(logged in as Admin, single-user): Edit > Preferences > Integrated Applications > "
+                "Company Preferences > select 'Arcadian QB Connector' > Properties > tick 'Allow this "
+                "application to login automatically', choose Admin, OK. Or open the file in QuickBooks "
+                "and choose 'Currently open file' here.",
     0x80040420: "QuickBooks needs a user to log in first. Open QuickBooks, log in, and try again.",
     0x80040422: "Another program is using QuickBooks in single-user mode. Close it and try again.",
     0x80040424: "QuickBooks is busy (another program or a backup is running). Try again in a minute.",

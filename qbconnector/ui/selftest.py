@@ -73,6 +73,29 @@ def run():
         sent = open(storage.LOG_FILE, encoding="utf-8-sig").read()
         assert "ARC-1023" in sent and "Agent" in sent
         note("agent inbox ok")
+        # automatic posting: a correct request posts by itself, a wrong one waits with a .check.json
+        ag.auto_var.set(True)
+        ag._auto_changed()
+        good = {"request_id": "auto-1", "title": "auto", "company": "Arcadian Cafe", "records": [
+            {"kind": "invoice", "customer": "MCB Bank", "date": "03/11/2026", "ref": "2026-10-08",
+             "cls": "Store 1", "lines": [{"item": "Bank Discount Receivable", "amount": "10"}]}]}
+        bad = {"request_id": "auto-2", "title": "auto bad", "records": [{"kind": "invoice", "customer": "X"}]}
+        for nm, d in (("auto1.json", good), ("auto2.json", bad)):
+            with open(os.path.join(agent_dir, "Inbox", nm), "w") as f:
+                json.dump(d, f)
+        ag.scan(quiet=True)
+        t0 = time.time()
+        while time.time() - t0 < 10 and not os.path.exists(os.path.join(agent_dir, "Results", "auto1.result.json")):
+            app.update()
+            time.sleep(0.05)
+        wait()
+        r1 = json.load(open(os.path.join(agent_dir, "Results", "auto1.result.json")))
+        assert r1["added"] == 1, r1
+        assert os.path.exists(os.path.join(agent_dir, "Results", "auto2.check.json"))
+        assert os.path.exists(os.path.join(agent_dir, "Inbox", "auto2.json"))
+        ag.auto_var.set(False)
+        ag._auto_changed()
+        note("agent auto-post ok")
         # remove the agent's invoice from the count below
         with open(storage.LOG_FILE, encoding="utf-8-sig") as f:
             lines = f.read().splitlines()

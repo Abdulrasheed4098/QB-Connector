@@ -52,7 +52,8 @@ class Request:
     def __init__(self, path):
         self.path = path
         self.name = os.path.basename(path)
-        self.received = _dt.datetime.fromtimestamp(os.path.getmtime(path))
+        self.mtime = os.path.getmtime(path)
+        self.received = _dt.datetime.fromtimestamp(self.mtime)
         self.data = {}
         self.error = None
         self.batches = []
@@ -159,6 +160,21 @@ def finish(folder, req, company, outcome):
     except OSError:
         pass
     return rpath
+
+
+def write_check(folder, req, company, note=""):
+    """Automatic posting skipped a request: write what is wrong so Claude can fix it."""
+    stem = os.path.splitext(req.name)[0]
+    data = {"request_id": req.request_id, "title": req.title, "file": req.name, "company": company,
+            "outcome": "Needs review (not posted)", "note": note or req.error or "",
+            "checked_at": _dt.datetime.now().isoformat(timespec="seconds"),
+            "entries": [{"no": b.rows[0], "kind": b.kind, "status": b.status,
+                         "message": b.error or ""} for b in req.batches]}
+    try:
+        with open(os.path.join(folder, "Results", f"{stem}.check.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
 
 
 def write_lists(folder, lists):

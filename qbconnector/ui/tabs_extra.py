@@ -179,6 +179,13 @@ class ImportTab(ttk.Frame):
             open_path(self.result_file)
 
 
+def _mtime(path):
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0
+
+
 class AgentTab(ImportTab):
     """Requests prepared by Claude arrive as files in the Agent folder; you check and post them."""
 
@@ -207,6 +214,9 @@ class AgentTab(ImportTab):
         ttk.Button(bar, text="Open folder", command=lambda: open_path(self.folder)).pack(side="left")
         ttk.Button(bar, text="Change…", command=self.change_folder).pack(side="left", padx=6)
         ttk.Button(bar, text="Refresh", command=self.scan).pack(side="left")
+        self.auto_var = tk.BooleanVar(value=bool(app.settings.get("agent_autopost")))
+        ttk.Checkbutton(bar, variable=self.auto_var, command=self._auto_changed,
+                        text="Post agent requests automatically (no click needed)").pack(side="right")
 
         pan = ttk.PanedWindow(self, orient="vertical")
         pan.pack(fill="both", expand=True, padx=14, pady=8)
@@ -261,6 +271,35 @@ class AgentTab(ImportTab):
                 agent.write_lists(self.folder, self.app.lists)
             self.scan()
 
+    def _auto_changed(self):
+        self.app.settings["agent_autopost"] = self.auto_var.get()
+        storage.save_settings(self.app.settings)
+        if self.auto_var.get():
+            self.app.status("Automatic posting is ON: requests from Claude are posted as soon as they arrive.")
+            self.auto_post_next()
+
+    def auto_post_next(self):
+        """Post the first waiting request on its own, if automatic posting is on.
+        Only when every entry checks out; otherwise it waits for review and a .check.json
+        with the problems is written to Results for Claude to fix."""
+        if not self.auto_var.get() or self.app.busy or self.app.lists is None:
+            return
+        for r in self.requests:
+            if r.error or getattr(r, "auto_tried", False):
+                continue
+            r.auto_tried = True
+            batches = r.build(self.app.lists)
+            bad = [b for b in batches if b.status != "Ready"]
+            if bad or not batches or agent.already_posted(self.folder, r.request_id):
+                agent.write_check(self.folder, r, self.app.lists.company,
+                                  "already posted before" if not bad and batches else "")
+                self.app.status(f"Request '{r.title}' needs your review (see Agent Inbox).")
+                continue
+            self.current, self.batches = r, batches
+            self.redraw()
+            self._post(r, batches, auto=True)
+            return
+
     def _poll(self):
         try:
             if not self.app.busy:
@@ -270,14 +309,17 @@ class AgentTab(ImportTab):
 
     def scan(self, quiet=False):
         paths = agent.pending(self.folder)
-        if [r.path for r in self.requests] == paths and quiet:
+        stamp = [(p, _mtime(p)) for p in paths]
+        if [(r.path, r.mtime) for r in self.requests] == stamp and quiet:
             return
         if self.app.busy:
             return
         keep = self.current.path if self.current else None
-        old = {r.path: r for r in self.requests}
-        # keep already-checked requests as they are (same objects), read only new files
-        self.requests = [old[p] if p in old else agent.Request(p) for p in paths]
+        old = {(r.path, r.mtime): r for r in self.requests}
+        # keep already-checked requests as they are (same objects); re-read new or changed files
+        self.requests = [old.get(st) or agent.Request(st[0]) for st in stamp]
+        if self.current is not None and self.current not in self.requests:
+            self.current, self.batches = None, []
         if keep not in paths:
             self.current, self.batches = None, []
         self.req_tree.delete(*self.req_tree.get_children())
@@ -287,8 +329,10 @@ class AgentTab(ImportTab):
                 len(r.data.get("records") or []), r.received.strftime("%d/%m/%Y %H:%M"), r.name))
         n = len(self.requests)
         self.app.nb.tab(self, text=f"  Agent Inbox ({n})  " if n else "  Agent Inbox  ")
-        new = [r for r in self.requests if r.path not in self._seen]
-        self._seen.update(r.path for r in self.requests)
+        new = [r for r in self.requests if (r.path, r.mtime) not in self._seen]
+        self._seen.update((r.path, r.mtime) for r in self.requests)
+        if new:
+            self.after(300, self.auto_post_next)
         if new and quiet:
             self.app.status(f"New request from the agent: {new[0].title}. Open the Agent Inbox tab.")
             try:
@@ -339,6 +383,7 @@ class AgentTab(ImportTab):
         if self.app.lists:
             agent.write_lists(self.folder, self.app.lists)
         self.recheck()
+        self.after(300, self.auto_post_next)
 
     # -- actions
     def post(self):
@@ -353,20 +398,25 @@ class AgentTab(ImportTab):
                + (f"\n\n{bad} entr{'y' if bad == 1 else 'ies'} with errors will NOT be posted." if bad else ""))
         if not self.app.confirm("Post to QuickBooks", msg):
             return
+        self._post(r, ready)
 
+    def _post(self, r, ready, auto=False):
         def done(_):
             self.redraw()
             company = self.app.lists.company if self.app.lists else ""
             agent.finish(self.folder, r, company, "Posted")
             added = sum(1 for b in ready if b.status == "Added")
-            self.app.notify("Agent request posted", f"{added} of {len(ready)} entr"
-                            f"{'y' if len(ready) == 1 else 'ies'} added to QuickBooks."
-                            + ("\nSome were rejected; ask Claude to check the result." if added < len(ready)
-                               else ""))
+            text = (f"{added} of {len(ready)} entr{'y' if len(ready) == 1 else 'ies'} added to QuickBooks"
+                    + (" (some rejected; ask Claude to check)" if added < len(ready) else ""))
+            if auto:
+                self.app.status(f"Posted automatically: {r.title}. {text}.")
+            else:
+                self.app.notify("Agent request posted", text + ".")
             self.current = None
             self.scan()
+            self.after(500, self.auto_post_next)
 
-        self.app.post_batches(ready, done, progress=self.redraw, source="Agent")
+        self.app.post_batches(ready, done, progress=self.redraw, source="Agent (auto)" if auto else "Agent")
 
     def reject(self):
         r = self.current

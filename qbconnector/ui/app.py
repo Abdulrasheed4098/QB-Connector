@@ -48,6 +48,9 @@ class App(tk.Tk):
         tk.Label(bar, textvariable=self.status_var, bg="#e9eef6", anchor="w", padx=10, pady=4).pack(
             side="left", fill="x", expand=True)
         self._q = queue.Queue()
+        if self.settings.get("agent_autopost") and not demo:
+            # automatic posting needs a connection: connect on start-up
+            self.after(1500, self.connect)
 
     # ------------------------------------------------------------ look
     def _style(self):
