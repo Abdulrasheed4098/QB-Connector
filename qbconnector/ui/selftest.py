@@ -47,6 +47,13 @@ def run():
         note(f"lists: {app.lists.summary()}")
         tabs = {type(t).__name__: t for t in app.tabs}
 
+        inv = tabs["InvoiceTab"]
+        inv.f.set("customer", "MCB Bank")
+        inv.f.set("ref", "DC-OCT")
+        inv.grid.set_row(inv.grid.rows[0], {"amount": "45250.50"})
+        inv.save()
+        wait()
+
         bill = tabs["BillTab"]
         bill.f.set("vendor", "Pepsi Co")
         bill.f.set("ref", "INV-1")
@@ -101,7 +108,7 @@ def run():
         wait()
 
         cus = tabs["CustomerTab"]
-        cus.f.set("name", "MCB Bank")
+        cus.f.set("name", "UBL Bank")
         cus.save()
         wait()
 
@@ -134,7 +141,7 @@ def run():
         log = storage.read_log()
         added = [r for r in log if r[7] == "Added"]
         note(f"saved: {len(added)} records -> " + ", ".join(sorted({r[2] for r in added})))
-        assert len(added) == 10, f"expected 10 added, got {len(added)}: {log}"
+        assert len(added) == 11, f"expected 11 added, got {len(added)}: {log}"
 
         tpl = os.path.join(os.environ["APPDATA"], "tpl.xlsx")
         from .. import importer

@@ -10,8 +10,8 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from .. import APP_TITLE, VERSION, poster, storage
 from ..qbxml import QBError
 from ..session import QBConnectError, QBConnection
-from .forms import (AccountTab, BillTab, ChequeTab, CustomerTab, DepositTab, ItemTab, JournalTab,
-                    PayBillsTab, TransferTab, VendorTab)
+from .forms import (AccountTab, BillTab, ChequeTab, CustomerTab, DepositTab, InvoiceTab, ItemTab,
+                    JournalTab, PayBillsTab, TransferTab, VendorTab)
 from .tabs_extra import ImportTab, LogTab
 
 NAVY = "#14213d"
@@ -32,7 +32,7 @@ class App(tk.Tk):
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True, padx=8, pady=(6, 0))
         self.tabs = []
-        for cls, label in [(BillTab, "Enter Bill"), (PayBillsTab, "Pay Bills"), (ChequeTab, "Write Cheque"),
+        for cls, label in [(InvoiceTab, "Invoice"), (BillTab, "Enter Bill"), (PayBillsTab, "Pay Bills"), (ChequeTab, "Write Cheque"),
                            (JournalTab, "Journal Entry"), (DepositTab, "Deposit"), (TransferTab, "Transfer"),
                            (ItemTab, "Item"), (VendorTab, "Vendor"), (CustomerTab, "Customer"),
                            (AccountTab, "Account"), (ImportTab, "Excel Import"), (LogTab, "Log")]:

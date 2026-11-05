@@ -16,6 +16,7 @@ KINDS = {
     "vendor": "Vendor",
     "customer": "Customer",
     "account": "Account",
+    "invoice": "Invoice",
     "bill": "Bill",
     "paybill": "Bill Payment",
     "cheque": "Cheque",
@@ -52,7 +53,7 @@ MAX = {
     "item_name": 31, "account_name": 31, "vendor_name": 41, "customer_name": 41,
     "company": 41, "addr": 41, "city": 31, "phone": 21, "email": 1023, "contact": 41,
     "print_as": 41, "vendor_acct": 99, "ntn": 15, "acct_number": 7, "bank_no": 25,
-    "acct_desc": 200, "bill_ref": 20, "check_ref": 11, "je_ref": 11, "billpay_ref": 11,
+    "acct_desc": 200, "bill_ref": 20, "check_ref": 11, "inv_ref": 11, "po": 25, "je_ref": 11, "billpay_ref": 11,
     "dep_check_no": 11, "memo": 4095, "desc": 4095, "notes": 4095,
 }
 
@@ -146,7 +147,7 @@ class Lists:
                 f"{len(self.vendors)} vendors, {len(self.customers)} customers")
 
 
-LABELS = {"accounts": "Account", "vendors": "Vendor", "customers": "Customer:Job",
+LABELS = {"accounts": "Account", "vendors": "Vendor", "customers": "Customer",
           "items": "Item", "classes": "Class", "terms": "Terms", "payees": "Name"}
 
 
@@ -390,6 +391,62 @@ def check_bill(raw, lists=None):
     return r
 
 
+def _strip_arc(v):
+    """Invoice numbers must not contain the word ARC: 'ARC-1023' / 'arc 1023' -> '1023'."""
+    import re
+    s = clean(v)
+    if s is None:
+        return None
+    s = re.sub(r"(?<![a-z])arc(?![a-z])", "", s, flags=re.I)
+    s = re.sub(r"^[\s\-_/.#:]+|[\s\-_/.#:]+$", "", s)
+    s = re.sub(r"[\s\-_/.#:]{2,}", "-", s)
+    return s or None
+
+
+def check_invoice(raw, lists=None):
+    """Customer invoice, e.g. the bank-discount claim: Customer:Job = bank,
+    Class = Store 1, Item = Bank Discount Receivable, Amount = bank's share."""
+    p = Problems()
+    r = {
+        "kind": "invoice",
+        "customer": _ref(p, lists, "customers", "Customer:Job", raw.get("customer"), required=True),
+        "date": p.run(parse_date, raw.get("date"), "Invoice Date"),
+        "ref": p.text("Invoice No", _strip_arc(raw.get("ref")), MAX["inv_ref"]),
+        "cls": _ref(p, lists, "classes", "Class", raw.get("cls")),
+        "po":p.text("P.O. No", raw.get("po"), MAX["po"]),
+        "terms": _ref(p, lists, "terms", "Terms", raw.get("terms")),
+        "due_date": p.run(parse_date, raw.get("due_date"), "Due Date", required=False),
+        "memo": p.text("Memo", raw.get("memo"), MAX["memo"]),
+        "lines": [],
+    }
+    for i, ln in enumerate(raw.get("lines") or [], 1):
+        if all(is_blank(ln.get(k)) for k in ("item", "amount", "qty", "rate", "desc")):
+            continue
+        tag = f"Line {i}: "
+        q = p.run(parse_qty, ln.get("qty"), tag + "Qty")
+        rate = p.run(parse_amount, ln.get("rate"), tag + "Rate", required=False, allow_zero=True)
+        amount = p.run(parse_amount, ln.get("amount"), tag + "Amount", required=False)
+        if q is not None and rate is not None:
+            calc = (q * rate).quantize(Decimal("0.01"))
+            if amount is not None and abs(amount - calc) > Decimal("0.05"):
+                p.add(f"{tag}Qty x Rate = {calc} but Amount is {amount}")
+            amount = calc
+        if amount is None:
+            p.add(f"{tag}Amount is required (or Qty and Rate)")
+        r["lines"].append({
+            "item": _ref(p, lists, "items", tag + "Item", ln.get("item"), required=True),
+            "desc": p.text(tag + "Description", ln.get("desc"), MAX["desc"]),
+            "qty": q, "rate": rate if q is not None else None, "amount": amount,
+            # a line without its own class takes the invoice's class (so income goes to that store)
+            "cls": _ref(p, lists, "classes", tag + "Class", ln.get("cls")) or r["cls"],
+        })
+    if not r["lines"]:
+        p.add("At least one line (item and amount) is required")
+    p.raise_if_any()
+    r["total"] = _total(r["lines"])
+    return r
+
+
 def check_cheque(raw, lists=None):
     p = Problems()
     bank = _ref(p, lists, "accounts", "Bank Account", raw.get("bank"), required=True)
@@ -530,7 +587,7 @@ def check_paybill(raw, lists=None):
 
 CHECKERS = {
     "item": check_item, "vendor": check_vendor, "customer": check_customer,
-    "account": check_account, "bill": check_bill, "cheque": check_cheque,
+    "account": check_account, "invoice": check_invoice, "bill": check_bill, "cheque": check_cheque,
     "journal": check_journal, "deposit": check_deposit, "transfer": check_transfer,
     "paybill": check_paybill,
 }
@@ -551,6 +608,8 @@ def describe(r):
         return nm, ACCOUNT_TYPE_LABELS.get(r.get("type"), "") if k == "account" else "", None
     if k == "bill":
         return r.get("ref") or "", r["vendor"], r["total"]
+    if k == "invoice":
+        return r.get("ref") or "", r["customer"], r["total"]
     if k == "cheque":
         return r.get("ref") or ("To print" if r["to_print"] else ""), r.get("payee") or "", r["total"]
     if k == "paybill":

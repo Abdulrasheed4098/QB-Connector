@@ -8,7 +8,8 @@ through the official QuickBooks SDK. You don't need to type entries into QuickBo
 |---|---|
 | Items: Inventory Part, Non-inventory Part, Service, Other Charge (incl. sub-items) | Enter Bill (expense and item lines, class, customer:job) |
 | Vendors (address, NTN, terms, opening balance) | Pay Bills (shows the vendor's unpaid bills; full or part payment) |
-| Customers / Jobs | Write Cheque (or "To be printed") |
+| Customers / Jobs | Create Invoice (bank discount claims: bank as Customer:Job, Class, Bank Discount Receivable item; "ARC" is removed from invoice numbers) |
+| | Write Cheque (or "To be printed") |
 | Accounts (all types, sub-accounts, opening balance) | Journal Entry (checks debits = credits) |
 | | Make Deposit |
 | | Transfer Funds |

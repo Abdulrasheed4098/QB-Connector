@@ -43,6 +43,12 @@ SHEETS = [
         ("Name", "name", ""), ("Parent", "parent", ""), ("Type", "type", ""),
         ("Number", "number", ""), ("Description", "desc", ""), ("Bank Account No", "bank_no", ""),
         ("Opening Balance", "open_balance", ""), ("Opening Balance Date", "open_balance_date", "")]),
+    ("Invoices", "invoice", [
+        ("Group", "group", ""), ("Customer:Job", "customer", "h"), ("Date", "date", "h"),
+        ("Invoice No", "ref", "h"), ("Class", "cls", "h"), ("P.O. No", "po", "h"),
+        ("Terms", "terms", "h"), ("Due Date", "due_date", "h"), ("Memo", "memo", "h"),
+        ("Item", "item", "l"), ("Description", "desc", "l"), ("Qty", "qty", "l"),
+        ("Rate", "rate", "l"), ("Amount", "amount", "l"), ("Line Class", "line_cls", "l")]),
     ("Bills", "bill", [
         ("Group", "group", ""), ("Vendor", "vendor", "h"), ("Date", "date", "h"),
         ("Due Date", "due_date", "h"), ("Ref No", "ref", "h"), ("Terms", "terms", "h"),
@@ -92,6 +98,10 @@ NOTES = {
     "Income Account": "Inventory: income account. Non-inventory/Service/Other Charge used only "
                       "for purchases: put the EXPENSE account here and leave purchase columns empty.",
     "Name": "Journal: vendor/customer name (required on A/P and A/R lines)",
+    "Customer:Job": "Invoices: the customer, e.g. the bank you claim the discount share from. "
+                    "Bills/Cheques: optional, the customer the cost is for.",
+    "Line Class": "Leave blank to use the invoice's Class (e.g. Store 1)",
+    "Item": "e.g. Bank Discount Receivable",
 }
 
 
@@ -262,6 +272,8 @@ def read_workbook(path):
                     ln = {k: v for k, v in vals.items() if level.get(k) == "l"}
                     if kind == "deposit":
                         ln["memo"] = ln.pop("line_memo", None)
+                    if kind == "invoice":
+                        ln["cls"] = ln.pop("line_cls", None)
                     lines.append(ln)
                 raw["bills" if kind == "paybill" else "lines"] = lines
             batches.append(Batch(name, kind, [r for r, _ in rows], raw))

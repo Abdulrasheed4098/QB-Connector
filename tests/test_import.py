@@ -29,6 +29,12 @@ def fill(path):
          "Cost": 110, "Sales Price": 150},
         {"Type": "Gadget", "Name": "Bad"},                          # error
     ])
+    put("Invoices", [
+        {"Group": 1, "Customer:Job": "MCB Bank", "Date": "31/10/2026", "Invoice No": "DC-1",
+         "Class": "Store 1", "Memo": "Oct share", "Item": "Bank Discount Receivable", "Amount": 45250.5},
+        {"Group": 2, "Customer:Job": "Askari Bank", "Date": "31/10/2026", "Class": "Store 1",
+         "Item": "Bank Discount Receivable", "Amount": "12,000"},
+    ])
     put("Vendors", [{"Name": "Coca Cola", "City": "Lahore", "NTN": "1234567-8"}])
     put("Bills", [
         {"Group": 1, "Vendor": "Pepsi Co", "Date": "05/11/2026", "Ref No": "INV-1", "Line Type": "Item",
@@ -88,6 +94,10 @@ def main():
             b.status = "Added"
         except QBError as e:
             b.status, b.result = "Rejected", e.message
+    inv = by[("Invoices", "2")]
+    assert inv.status == "Added", inv.result
+    sent_inv = [x for x in qb.sent if "InvoiceAdd>" in x][0]
+    assert "<ClassRef><FullName>Store 1</FullName></ClassRef><Amount>45250.50</Amount>" in sent_inv, sent_inv
     pay2 = by[("Bill Payments", "4")]
     assert pay2.status == "Rejected" and "only 300.00 unpaid" in pay2.result, pay2.result
     pay1 = by[("Bill Payments", "2-3")]
@@ -103,14 +113,14 @@ def main():
 
     # re-import the result: Added rows are skipped, errors come back
     b2, skipped2, _ = importer.read_workbook(out)
-    assert skipped2 >= 8, skipped2
+    assert skipped2 >= 10, skipped2
     assert all(b.raw for b in b2)
     assert {b.sheet for b in b2} == {"Items", "Journal Entries", "Bill Payments"}, [(b.sheet, b.row_text) for b in b2]
     out2 = importer.write_result(out, importer.check_batches(b2, lists))
     assert out2 == out
 
     log = storage.read_log()
-    assert any(r[7] == "Rejected" for r in log) and sum(r[7] == "Added" for r in log) >= 8
+    assert any(r[7] == "Rejected" for r in log) and sum(r[7] == "Added" for r in log) >= 10
     print("log rows:", len(log))
     print("IMPORT OK")
 

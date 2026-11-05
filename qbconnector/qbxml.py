@@ -142,6 +142,21 @@ def _purchase_lines(lines):
     return exp + items
 
 
+def invoice_add(r):
+    lines = ""
+    for ln in r["lines"]:
+        if ln.get("qty") is not None and ln.get("rate") is not None:
+            money = qty("Quantity", ln["qty"]) + amt("Rate", ln["rate"]) + ref("ClassRef", ln.get("cls"))
+        else:
+            money = qty("Quantity", ln.get("qty")) + ref("ClassRef", ln.get("cls")) + amt("Amount", ln["amount"])
+        lines += "<InvoiceLineAdd>" + ref("ItemRef", ln["item"]) + el("Desc", ln.get("desc")) + money \
+            + "</InvoiceLineAdd>"
+    body = (ref("CustomerRef", r["customer"]) + ref("ClassRef", r.get("cls")) + el("TxnDate", r["date"])
+            + el("RefNumber", r.get("ref")) + el("PONumber", r.get("po")) + ref("TermsRef", r.get("terms"))
+            + el("DueDate", r.get("due_date")) + el("Memo", r.get("memo")) + lines)
+    return _add("InvoiceAdd", body)
+
+
 def bill_add(r):
     body = (ref("VendorRef", r["vendor"]) + el("TxnDate", r["date"]) + el("DueDate", r.get("due_date"))
             + el("RefNumber", r.get("ref")) + ref("TermsRef", r.get("terms"))
@@ -199,7 +214,7 @@ def paybill_add(r):
 
 BUILDERS = {
     "item": item_add, "vendor": vendor_add, "customer": customer_add, "account": account_add,
-    "bill": bill_add, "cheque": cheque_add, "journal": journal_add, "deposit": deposit_add,
+    "invoice": invoice_add, "bill": bill_add, "cheque": cheque_add, "journal": journal_add, "deposit": deposit_add,
     "transfer": transfer_add, "paybill": paybill_add,
 }
 

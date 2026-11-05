@@ -37,6 +37,10 @@ SAMPLES = {
     "account": [dict(name="MCB Gulberg", type="Bank", number="1010", desc="Main", bank_no="0123456",
                      open_balance="10000", open_balance_date="30/06/2026"),
                 dict(name="Expenses:Gas Bill", type="Expense")],
+    "invoice": [dict(customer="MCB Bank", date="31/10/2026", ref="DC-OCT-01", cls="Store 1",
+                     po="Oct claim", terms="Net 30", due_date="30/11/2026", memo="Oct discount share",
+                     lines=[dict(item="Bank Discount Receivable", desc="Oct 2026 MCB share", amount="45,250.50"),
+                            dict(item="Bank Discount Receivable", qty="2", rate="100", cls="Store 2")])],
     "bill": [dict(vendor="Pepsi Co", date="05/11/2026", due_date="05/12/2026", ref="INV-1001",
                   terms="Net 30", memo="Nov drinks",
                   lines=[dict(kind="Item", target="7Up 1.5ltr", qty="24", rate="110", cls="Store 1"),
@@ -146,6 +150,12 @@ def test_lists_and_checks():
             assert expect in str(e), (kind, expect, str(e))
         else:
             raise AssertionError(f"{kind}: expected error '{expect}'")
+    L.add_name("customers", "Askari Bank")
+    inv = check("invoice", dict(customer="Askari Bank", date="31/10/2026", cls="Store 1",
+                                lines=[dict(item="Pest Control", amount="1000")]), L)
+    assert inv["lines"][0]["cls"] == "Store 1" and str(inv["total"]) == "1000.00"
+    x = qbxml.build(inv)
+    assert "<InvoiceLineAdd><ItemRef><FullName>Pest Control</FullName></ItemRef><ClassRef><FullName>Store 1" in x, x
     # sub-item via name with colon
     r = check("item", dict(type="Service", name="Bev:Tea", income_account="Sales"), None)
     assert r["name"] == "Tea" and r["parent"] == "Bev"

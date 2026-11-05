@@ -308,6 +308,67 @@ class BillTab(BaseTab):
         self.grid.clear()
 
 
+class InvoiceTab(BaseTab):
+    kind = "invoice"
+    title = "Create Invoice"
+    hint = ("Bank discount claim: Customer:Job = the bank, Class = the store, Item = Bank Discount "
+            "Receivable, Amount = the bank's share. Lines without a class use the invoice Class. "
+            "Class and Item are remembered for the next invoice. The word ARC is removed from Invoice No.")
+
+    def build(self):
+        st = self.app.settings
+        f = self.f = Form(self.body, columns=3)
+        f.pack(fill="x", anchor="w")
+        f.add("customer", "Customer:Job", "combo", source=lambda: self.app.names("customers"), width=32,
+              required=True)
+        f.add("date", "Invoice Date", "date", required=True)
+        f.add("ref", "Invoice No", width=16)
+        f.add("cls", "Class", "combo", source=lambda: self.app.names("classes"), width=32,
+              default=st.get("invoice_class", "Store 1"))
+        f.add("terms", "Terms", "combo", source=lambda: self.app.names("terms"), width=16)
+        f.add("due_date", "Due Date", "date", default="")
+        f.add("memo", "Memo", width=32)
+        f.add("po", "P.O. No", width=16)
+        ttk.Label(self.body, text="Lines", style="Section.TLabel").pack(anchor="w", pady=(10, 2))
+        cols = [
+            dict(key="item", label="Item", kind="combo", source=lambda r: self.app.names("items"), width=32, weight=2),
+            dict(key="desc", label="Description", width=34, weight=2),
+            dict(key="qty", label="Qty", kind="qty", width=7),
+            dict(key="rate", label="Rate", kind="amount", width=11),
+            dict(key="amount", label="Amount", kind="amount", width=14),
+            dict(key="cls", label="Class (blank = invoice class)", kind="combo",
+                 source=lambda r: self.app.names("classes"), width=16),
+        ]
+        self.grid = LineGrid(self.body, cols, rows=4)
+        self.grid.pack(fill="both", expand=True)
+        self._prefill()
+
+    def _prefill(self):
+        item = self.app.settings.get("invoice_item", "Bank Discount Receivable")
+        if item and self.grid.rows:
+            self.grid.set_row(self.grid.rows[0], {"item": item})
+
+    def collect(self):
+        raw = self.f.values()
+        raw["lines"] = self.grid.lines()
+        return raw
+
+    def clear(self):
+        self.f.clear(keep=("date", "cls", "terms"))
+        self.grid.clear()
+        self._prefill()
+
+    def after_saved(self, record, new_id):
+        st = self.app.settings
+        if record.get("cls"):
+            st["invoice_class"] = record["cls"]
+        if record["lines"]:
+            st["invoice_item"] = record["lines"][0]["item"]
+        from .. import storage
+        storage.save_settings(st)
+        self.clear()
+
+
 class ChequeTab(BillTab):
     kind = "cheque"
     title = "Write Cheque"

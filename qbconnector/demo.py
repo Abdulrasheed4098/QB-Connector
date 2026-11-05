@@ -48,13 +48,15 @@ class FakeQB:
         if tag == "VendorQuery":
             return f"<VendorQueryRs {ok}><VendorRet><Name>Pepsi Co</Name></VendorRet></VendorQueryRs>"
         if tag == "CustomerQuery":
-            return f"<CustomerQueryRs {ok}><CustomerRet><FullName>Askari Bank</FullName></CustomerRet></CustomerQueryRs>"
+            return (f"<CustomerQueryRs {ok}><CustomerRet><FullName>Askari Bank</FullName></CustomerRet>"
+                    f"<CustomerRet><FullName>MCB Bank</FullName></CustomerRet></CustomerQueryRs>")
         if tag in ("EmployeeQuery", "OtherNameQuery", "TermsQuery"):
             return (f'<{tag}Rs requestID="{rid}" statusCode="1" statusSeverity="Info" '
                     f'statusMessage="A query request did not find a matching object in QuickBooks"/>')
         if tag == "ItemQuery":
             return (f"<ItemQueryRs {ok}><ItemInventoryRet><FullName>7Up 1.5ltr</FullName></ItemInventoryRet>"
-                    f"<ItemNonInventoryRet><FullName>A4 Paper Rim</FullName></ItemNonInventoryRet></ItemQueryRs>")
+                    f"<ItemNonInventoryRet><FullName>A4 Paper Rim</FullName></ItemNonInventoryRet>"
+                    f"<ItemOtherChargeRet><FullName>Bank Discount Receivable</FullName></ItemOtherChargeRet></ItemQueryRs>")
         if tag == "ClassQuery":
             return f"<ClassQueryRs {ok}><ClassRet><FullName>Store 1</FullName></ClassRet></ClassQueryRs>"
         if tag == "BillQuery":
