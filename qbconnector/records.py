@@ -565,11 +565,28 @@ def check_paybill(raw, lists=None):
         bref = clean(b.get("bill_ref"))
         if not txn and not bref:
             p.add(f"Bill {i}: Bill Ref No is required")
-        r["bills"].append({"txn_id": txn, "bill_ref": bref, "amount": amt})
+        # Set Discount (e.g. WHT deducted): the cheque pays `amount`, the discount clears the rest
+        disc = p.run(parse_amount, b.get("discount"), f"Bill {i}: Discount", required=False) \
+            if not is_blank(b.get("discount")) else None
+        if disc is not None and disc <= 0:
+            disc = None
+        disc_acct = None
+        if disc:
+            disc_acct = _ref(p, lists, "accounts", f"Bill {i}: Discount Account",
+                             b.get("discount_account") or raw.get("discount_account"), required=True)
+        # Bill amount as per the payment voucher: checked against QuickBooks before posting
+        bill_amt = p.run(parse_amount, b.get("bill_amount"), f"Bill {i}: Bill Amount", required=False) \
+            if not is_blank(b.get("bill_amount")) else None
+        if bill_amt is not None and amt is not None and (amt + (disc or 0)) != bill_amt:
+            p.add(f"Bill {i}: amount to pay {amt:,.2f} + discount {(disc or 0):,.2f} does not equal "
+                  f"the bill amount {bill_amt:,.2f}")
+        r["bills"].append({"txn_id": txn, "bill_ref": bref, "amount": amt, "discount": disc,
+                           "discount_account": disc_acct, "bill_amount": bill_amt})
     if not r["bills"]:
         p.add("Select at least one bill to pay")
     p.raise_if_any()
-    r["total"] = _total(r["bills"])
+    r["total"] = _total(r["bills"])          # the cheque amount (discounts are not paid out)
+    r["discount_total"] = sum((b["discount"] or 0 for b in r["bills"]), Decimal(0))
     return r
 
 

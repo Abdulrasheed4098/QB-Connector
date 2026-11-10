@@ -64,7 +64,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v1.4.1-build${{ github.run_number }}"
+          TAG="v1.5.0-build${{ github.run_number }}"
           (cd dist && 7z a -tzip ../installer/QBConnector-Portable.zip QBConnector >/dev/null)
           gh release create "$TAG" installer/*.exe installer/QBConnector-Portable.zip --title "QB Connector build ${{ github.run_number }}" \
             --notes "Download QBConnector-Setup-*.exe below and run it. Or download QBConnector-Portable.zip, unzip and run QBConnector.exe without installing. If Windows shows 'Windows protected your PC', click More info -> Run anyway."

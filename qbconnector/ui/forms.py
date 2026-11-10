@@ -498,8 +498,8 @@ class PayBillsTab(BaseTab):
     kind = "paybill"
     title = "Pay Bills"
     hint = ("1) Choose the vendor and click 'Show unpaid bills'.  2) Tick the bills to pay "
-            "(double-click a row). To pay part of a bill, select it and change 'Amount to pay'.  "
-            "3) Fill bank, cheque no and date, then Save.")
+            "(double-click a row). To pay part of a bill, select it and change 'Amount to pay'. "
+            "For WHT, select the bill and click 'Set Discount'.  3) Fill bank, cheque no and date, then Save.")
 
     def build(self):
         top = ttk.Frame(self.body)
@@ -508,13 +508,13 @@ class PayBillsTab(BaseTab):
         f.pack(side="left")
         f.add("vendor", "Vendor", "combo", source=lambda: self.app.names("vendors"), width=40, required=True)
         ttk.Button(top, text="Show unpaid bills", command=self.load_bills).pack(side="left", padx=10)
-        cols = ("pay", "date", "ref", "due", "amount", "open", "topay", "memo")
-        heads = ("Pay", "Bill Date", "Ref No", "Due Date", "Bill Amount", "Unpaid", "Amount to pay", "Memo")
-        widths = (40, 90, 120, 90, 110, 110, 120, 260)
+        cols = ("pay", "date", "ref", "due", "amount", "open", "disc", "topay", "memo")
+        heads = ("Pay", "Bill Date", "Ref No", "Due Date", "Bill Amount", "Unpaid", "Discount", "Amount to pay", "Memo")
+        widths = (40, 90, 120, 90, 110, 110, 100, 120, 220)
         self.tree = ttk.Treeview(self.body, columns=cols, show="headings", height=10, selectmode="browse")
         for c, h, w in zip(cols, heads, widths):
             self.tree.heading(c, text=h)
-            self.tree.column(c, width=w, anchor="e" if c in ("amount", "open", "topay") else
+            self.tree.column(c, width=w, anchor="e" if c in ("amount", "open", "disc", "topay") else
                              "center" if c == "pay" else "w", stretch=c == "memo")
         self.tree.pack(fill="both", expand=True, pady=(8, 4))
         self.tree.bind("<Double-1>", lambda e: self.toggle())
@@ -529,6 +529,7 @@ class PayBillsTab(BaseTab):
         self.amt.pack(side="left", padx=4)
         self.amt.bind("<Return>", lambda e: self.set_amount())
         ttk.Button(row, text="Set", command=self.set_amount).pack(side="left")
+        ttk.Button(row, text="Set Discount", command=self.set_discount).pack(side="left", padx=(12, 0))
         self.total_var = tk.StringVar(value="Total payment: 0.00")
         ttk.Label(row, textvariable=self.total_var, font=("Segoe UI", 10, "bold")).pack(side="right")
         ttk.Separator(self.body).pack(fill="x", pady=8)
@@ -563,8 +564,8 @@ class PayBillsTab(BaseTab):
             for b in bills:
                 iid = self.tree.insert("", "end", values=(
                     "", show_date(b["date"]), b["ref"], show_date(b["due_date"]),
-                    money(Decimal(b["amount_due"])), money(Decimal(b["open_amount"])), "", b["memo"]))
-                self.bills[iid] = {**b, "pay": None}
+                    money(Decimal(b["amount_due"])), money(Decimal(b["open_amount"])), "", "", b["memo"]))
+                self.bills[iid] = {**b, "pay": None, "disc": None, "disc_acct": None}
             self.update_total()
             if not bills:
                 self.app.notify("Pay Bills", f"No unpaid bills for {exact}.")
@@ -575,7 +576,8 @@ class PayBillsTab(BaseTab):
         b = self.bills[iid]
         vals = list(self.tree.item(iid, "values"))
         vals[0] = "✓" if b["pay"] else ""
-        vals[6] = money(b["pay"]) if b["pay"] else ""
+        vals[6] = money(b["disc"]) if b.get("disc") else ""
+        vals[7] = money(b["pay"]) if b["pay"] else ""
         self.tree.item(iid, values=vals)
 
     def toggle(self):
@@ -583,14 +585,14 @@ class PayBillsTab(BaseTab):
         if not sel:
             return
         b = self.bills[sel[0]]
-        b["pay"] = None if b["pay"] else Decimal(b["open_amount"])
+        b["pay"] = None if b["pay"] else Decimal(b["open_amount"]) - (b.get("disc") or 0)
         self._redraw(sel[0])
         self.show_selected()
         self.update_total()
 
     def mark_all(self, on):
         for iid, b in self.bills.items():
-            b["pay"] = Decimal(b["open_amount"]) if on else None
+            b["pay"] = Decimal(b["open_amount"]) - (b.get("disc") or 0) if on else None
             self._redraw(iid)
         self.update_total()
 
@@ -610,18 +612,44 @@ class PayBillsTab(BaseTab):
         except InputError as e:
             messagebox.showerror("Pay Bills", str(e), parent=self)
             return
-        if v and v > Decimal(b["open_amount"]):
+        if v and v + (b.get("disc") or 0) > Decimal(b["open_amount"]):
             messagebox.showerror("Pay Bills", f"This bill has only {money(Decimal(b['open_amount']))} "
-                                 "unpaid.", parent=self)
+                                 "unpaid (including the discount).", parent=self)
             return
         b["pay"] = v
         self._redraw(sel[0])
         self.update_total()
 
+    def set_discount(self):
+        """Like QuickBooks' Set Discount: discount amount + discount account for the selected bill.
+        The amount to pay becomes the bill's unpaid amount less the discount."""
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showinfo("Pay Bills", "Select a bill first.", parent=self)
+            return
+        b = self.bills[sel[0]]
+        default_acct = b.get("disc_acct") or self.app.settings.get("discount_account", "Withholding Tax Payable")
+        dlg = DiscountDialog(self, b, default_acct, self.app.names("accounts"))
+        self.wait_window(dlg)
+        if dlg.result is None:
+            return
+        disc, acct = dlg.result
+        if disc and acct:
+            self.app.settings["discount_account"] = acct
+            from .. import storage
+            storage.save_settings(self.app.settings)
+        b["disc"] = disc or None
+        b["disc_acct"] = acct if disc else None
+        b["pay"] = Decimal(b["open_amount"]) - (disc or 0)
+        self._redraw(sel[0])
+        self.show_selected()
+        self.update_total()
+
     def update_total(self):
         tot = sum((b["pay"] or 0 for b in self.bills.values()), Decimal(0))
+        disc = sum((b.get("disc") or 0 for b in self.bills.values() if b["pay"]), Decimal(0))
         n = sum(1 for b in self.bills.values() if b["pay"])
-        self.total_var.set(f"{n} bill(s)   Total payment: {money(tot)}")
+        self.total_var.set(f"{n} bill(s)   Discount: {money(disc)}   Cheque amount: {money(tot)}")
 
     def collect(self):
         raw = self.f.values()
@@ -629,7 +657,8 @@ class PayBillsTab(BaseTab):
         if self.loaded_vendor and self.vf.get("vendor").lower() != self.loaded_vendor.lower():
             raw["bills"] = []
         else:
-            raw["bills"] = [{"txn_id": b["txn_id"], "bill_ref": b["ref"], "amount": b["pay"]}
+            raw["bills"] = [{"txn_id": b["txn_id"], "bill_ref": b["ref"], "amount": b["pay"],
+                             "discount": b.get("disc"), "discount_account": b.get("disc_acct")}
                             for b in self.bills.values() if b["pay"]]
         return raw
 
@@ -646,3 +675,57 @@ class PayBillsTab(BaseTab):
         self.clear()
         self.vf.set("vendor", vendor)
         self.load_bills()
+
+
+class DiscountDialog(tk.Toplevel):
+    """Set Discount for one bill: Amount of Discount + Discount Account."""
+
+    def __init__(self, master, bill, default_acct, accounts):
+        super().__init__(master)
+        self.title("Set Discount")
+        self.transient(master)
+        self.resizable(False, False)
+        self.result = None
+        self.bill = bill
+        frm = ttk.Frame(self, padding=14)
+        frm.pack(fill="both")
+        ttk.Label(frm, text=f"Bill Ref No {bill['ref']}    Amount Due {money(Decimal(bill['amount_due']))}"
+                  ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        ttk.Label(frm, text="Amount of Discount").grid(row=1, column=0, sticky="w")
+        self.amt = ttk.Entry(frm, width=16, justify="right")
+        self.amt.grid(row=1, column=1, sticky="w", pady=3)
+        if bill.get("disc"):
+            self.amt.insert(0, f"{bill['disc']:.2f}")
+        ttk.Label(frm, text="Discount Account").grid(row=2, column=0, sticky="w")
+        self.acct = ttk.Combobox(frm, width=36, values=accounts)
+        self.acct.set(default_acct or "")
+        self.acct.grid(row=2, column=1, sticky="w", pady=3)
+        bar = ttk.Frame(frm)
+        bar.grid(row=3, column=0, columnspan=2, sticky="e", pady=(10, 0))
+        ttk.Button(bar, text="Clear", command=self.clear).pack(side="left", padx=4)
+        ttk.Button(bar, text="Cancel", command=self.destroy).pack(side="left", padx=4)
+        ttk.Button(bar, text="Done", style="Accent.TButton", command=self.ok).pack(side="left", padx=4)
+        self.amt.focus_set()
+        self.bind("<Return>", lambda e: self.ok())
+        self.grab_set()
+
+    def clear(self):
+        self.result = (None, None)
+        self.destroy()
+
+    def ok(self):
+        try:
+            v = parse_amount(self.amt.get(), "Amount of Discount", required=False)
+        except InputError as e:
+            messagebox.showerror("Set Discount", str(e), parent=self)
+            return
+        acct = self.acct.get().strip()
+        if v and not acct:
+            messagebox.showerror("Set Discount", "Choose the Discount Account "
+                                 "(e.g. Withholding Tax Payable).", parent=self)
+            return
+        if v and v >= Decimal(self.bill["open_amount"]):
+            messagebox.showerror("Set Discount", "The discount must be less than the unpaid amount.", parent=self)
+            return
+        self.result = (v, acct)
+        self.destroy()

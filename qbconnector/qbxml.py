@@ -211,7 +211,10 @@ def paybill_add(r):
         pay = el("RefNumber", r["ref"])
     else:
         pay = el("IsToBePrinted", False)
+    # schema order: TxnID, PaymentAmount, SetCredit, DiscountAmount, DiscountAccountRef
     applied = "".join("<AppliedToTxnAdd>" + el("TxnID", b["txn_id"]) + amt("PaymentAmount", b["amount"])
+                      + (amt("DiscountAmount", b["discount"]) + ref("DiscountAccountRef", b["discount_account"])
+                         if b.get("discount") else "")
                       + "</AppliedToTxnAdd>" for b in r["bills"])
     body = (ref("PayeeEntityRef", r["vendor"]) + el("TxnDate", r["date"])
             + ref("BankAccountRef", r["bank"]) + pay + el("Memo", r.get("memo")) + applied)
@@ -245,6 +248,13 @@ def lists_query():
         "<ClassQueryRq><IncludeRetElement>FullName</IncludeRetElement></ClassQueryRq>",
         "<TermsQueryRq><IncludeRetElement>Name</IncludeRetElement></TermsQueryRq>",
     ]
+
+
+def bills_by_id_query(txn_ids):
+    return ("<BillQueryRq>" + "".join(el("TxnID", t) for t in txn_ids)
+            + "".join(f"<IncludeRetElement>{t}</IncludeRetElement>" for t in
+                      ("TxnID", "TxnDate", "RefNumber", "DueDate", "AmountDue", "OpenAmount", "IsPaid", "Memo"))
+            + "</BillQueryRq>")
 
 
 def open_bills_query(vendor):
@@ -334,6 +344,7 @@ def read_open_bills(rs):
             "txn_id": txt(n, "TxnID"), "date": txt(n, "TxnDate"), "ref": txt(n, "RefNumber"),
             "due_date": txt(n, "DueDate"), "amount_due": txt(n, "AmountDue", "0"),
             "open_amount": txt(n, "OpenAmount", "0"), "memo": txt(n, "Memo"),
+            "is_paid": txt(n, "IsPaid").lower() == "true",
         })
     for b in out:
         # QuickBooks 2015 can report the vendor's whole balance as OpenAmount; a bill can never

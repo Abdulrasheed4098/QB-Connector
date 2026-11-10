@@ -69,7 +69,10 @@ SAMPLES = {
                 dict(vendor="Pepsi Co", date="05/11/2026", bank="MCB Gulberg", memo="cash, no cheque no",
                      bills=[dict(txn_id="1A2B-123", amount="10")]),
                 dict(vendor="Pepsi Co", date="05/11/2026", bank="MCB Gulberg", to_print="y",
-                     bills=[dict(txn_id="1A2B-123", amount="10")])],
+                     bills=[dict(txn_id="1A2B-123", amount="10")]),
+                dict(vendor="Pepsi Co", date="23/10/2026", bank="MCB Gulberg", ref="4587", memo="WHT",
+                     bills=[dict(txn_id="1A2B-123", bill_ref="268393", bill_amount="3800", amount="3790",
+                                 discount="10", discount_account="Withholding Tax Payable")])],
 }
 
 
@@ -80,6 +83,7 @@ def all_requests():
             r = check(kind, raw, None)
             out.append((kind, qbxml.build(r)))
     out.append(("query", qbxml.open_bills_query("Pepsi Co")))
+    out.append(("query", qbxml.bills_by_id_query(["1A2B-123", "1A2C-124"])))
     from qbconnector.agent import PRESETS
     for name, q in PRESETS.items():
         out.append((name, q))
@@ -183,8 +187,52 @@ def test_errors_and_ids():
     print("errors & ids ok")
 
 
+def test_paybill_discount():
+    from qbconnector import poster
+    from qbconnector.demo import FakeQB
+    from qbconnector.util import InputError
+    raw = dict(vendor="Pepsi Co", date="23/10/2026", bank="MCB Gulberg", ref="4587",
+               bills=[dict(txn_id="B-1", bill_ref="INV-9", bill_amount="1000", amount="997.50",
+                           discount="2.50", discount_account="Withholding Tax Payable")])
+    r = check("paybill", raw)
+    assert str(r["total"]) == "997.50" and str(r["discount_total"]) == "2.50"
+    x = qbxml.build(r)
+    assert ("<TxnID>B-1</TxnID><PaymentAmount>997.50</PaymentAmount><DiscountAmount>2.50</DiscountAmount>"
+            "<DiscountAccountRef><FullName>Withholding Tax Payable</FullName></DiscountAccountRef>") in x, x
+    # no discount -> no discount elements
+    assert "Discount" not in qbxml.build(check("paybill", dict(raw, bills=[dict(txn_id="B-1", amount="5")])))
+    # discount needs an account
+    try:
+        check("paybill", dict(raw, bills=[dict(txn_id="B-1", amount="997.50", discount="2.50")]))
+        raise AssertionError("discount without account accepted")
+    except InputError as e:
+        assert "Discount Account is required" in str(e)
+    # payment + discount must equal the voucher's bill amount
+    try:
+        check("paybill", dict(raw, bills=[dict(txn_id="B-1", bill_amount="1000", amount="990",
+                                               discount="2.50", discount_account="WHT")]))
+        raise AssertionError("mismatch accepted")
+    except InputError as e:
+        assert "does not equal the bill amount" in str(e)
+    # QuickBooks bill amount checked against the voucher before posting
+    qb = FakeQB()
+    poster.post(qb, check("paybill", raw), "Test")
+    assert any("BillPaymentCheckAdd" in s and "<DiscountAmount>2.50" in s for s in qb.sent)
+    qb = FakeQB()
+    bad = dict(raw, bills=[dict(txn_id="B-1", bill_amount="1300", amount="1297.50", discount="2.50",
+                                discount_account="Withholding Tax Payable")])
+    try:
+        poster.post(qb, check("paybill", bad), "Test")
+        raise AssertionError("amount difference not caught")
+    except qbxml.QBError as e:
+        assert "Amount differs" in e.message and "1,000.00 in QuickBooks" in e.message and "1,300.00" in e.message
+    assert not any("BillPaymentCheckAdd" in s for s in qb.sent)
+    print("paybill discount ok")
+
+
 if __name__ == "__main__":
     test_schema()
     test_lists_and_checks()
     test_errors_and_ids()
+    test_paybill_discount()
     print("ALL OK")

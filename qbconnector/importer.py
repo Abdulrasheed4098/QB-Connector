@@ -58,7 +58,9 @@ SHEETS = [
     ("Bill Payments", "paybill", [
         ("Group", "group", ""), ("Vendor", "vendor", "h"), ("Date", "date", "h"),
         ("Bank Account", "bank", "h"), ("Cheque No", "ref", "h"), ("To Be Printed", "to_print", "h"),
-        ("Memo", "memo", "h"), ("Bill Ref No", "bill_ref", "l"), ("Amount", "amount", "l")]),
+        ("Memo", "memo", "h"), ("Bill Ref No", "bill_ref", "l"), ("Amount", "amount", "l"),
+        ("Discount", "discount", "l"), ("Discount Account", "discount_account", "l"),
+        ("Bill Amount", "bill_amount", "l")]),
     ("Cheques", "cheque", [
         ("Group", "group", ""), ("Bank Account", "bank", "h"), ("Payee", "payee", "h"),
         ("Date", "date", "h"), ("Cheque No", "ref", "h"), ("To Be Printed", "to_print", "h"),

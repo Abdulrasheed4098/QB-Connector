@@ -44,10 +44,42 @@ def resolve_bills(qb, record):
                             f"'{record['vendor']}'; pay it from the Pay Bills screen instead")
         else:
             open_amt = Decimal(found[0]["open_amount"] or "0")
-            if b["amount"] > open_amt:
+            if b["amount"] + (b.get("discount") or 0) > open_amt:
                 problems.append(f"Bill '{b['bill_ref']}' has only {open_amt:,.2f} unpaid, "
-                                f"cannot pay {b['amount']:,.2f}")
+                                f"cannot pay {b['amount'] + (b.get('discount') or 0):,.2f}")
             b["txn_id"] = found[0]["txn_id"]
+    if problems:
+        raise qbxml.QBError("-", "\n".join(problems))
+    return record
+
+
+def check_bill_amounts(qb, record):
+    """Before paying: every bill must still be unpaid, payment + discount must fit in the bill,
+    and when the voucher gives the bill amount, QuickBooks' bill must have the same amount."""
+    ids = [b["txn_id"] for b in record["bills"] if b.get("txn_id")]
+    if not ids:
+        return record
+    req = qbxml.bills_by_id_query(ids)
+    rs = qbxml.parse_response(qb.send(qbxml.envelope(req)))[0]
+    if not rs.ok:
+        raise qbxml.QBError(rs.code, rs.message, req)
+    found = {b["txn_id"]: b for b in qbxml.read_open_bills(rs)}
+    problems = []
+    for b in record["bills"]:
+        name = b.get("bill_ref") or b["txn_id"]
+        q = found.get(b["txn_id"])
+        if q is None:
+            problems.append(f"Bill '{name}' not found in QuickBooks")
+            continue
+        due = Decimal(q["amount_due"] or "0")
+        if q.get("is_paid"):
+            problems.append(f"Bill '{q['ref'] or name}' is already paid in QuickBooks")
+        if b.get("bill_amount") is not None and b["bill_amount"] != due:
+            problems.append(f"Amount differs: bill '{q['ref'] or name}' is {due:,.2f} in QuickBooks "
+                            f"but {b['bill_amount']:,.2f} on the payment voucher")
+        elif b["amount"] + (b.get("discount") or 0) > due:
+            problems.append(f"Bill '{q['ref'] or name}' is {due:,.2f}; payment {b['amount']:,.2f} + "
+                            f"discount {(b.get('discount') or 0):,.2f} is more than the bill")
     if problems:
         raise qbxml.QBError("-", "\n".join(problems))
     return record
@@ -65,6 +97,8 @@ def post(qb, record, company="", source="Screen"):
     try:
         if record["kind"] == "paybill":
             resolve_bills(qb, record)
+            if any(b.get("discount") or b.get("bill_amount") is not None for b in record["bills"]):
+                check_bill_amounts(qb, record)
         req = qbxml.envelope(qbxml.build(record))
         answer = qb.send(req)
         rs = qbxml.parse_response(answer)[0]

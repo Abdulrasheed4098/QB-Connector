@@ -19,6 +19,15 @@ Request file:
 }
 kind: invoice, bill, paybill, cheque, journal, deposit, transfer, item, vendor, customer, account
 (same fields as the screens; see records.py). Nothing is posted until the user clicks Post.
+
+Bill payment with WHT (QuickBooks "Set Discount"):
+    {"kind": "paybill", "vendor": "Al-Wasay", "date": "23/10/2026", "bank": "Faysal Bank",
+     "ref": "4587", "memo": "BPV-000066",
+     "bills": [{"txn_id": "50DA1-1793629789", "bill_ref": "268393", "bill_amount": "3800",
+                "amount": "3790", "discount": "10", "discount_account": "Withholding Tax Payable"}]}
+  amount = paid by cheque (cheque amount = total of amounts); discount clears the WHT;
+  bill_amount (optional) = bill amount on the payment voucher: if QuickBooks' bill amount is
+  different, the entry is NOT posted and the result says "Amount differs ...".
 """
 import datetime as _dt
 import json
