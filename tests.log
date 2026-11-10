@@ -1,0 +1,18 @@
+python bits: 32
+schema test skipped (QBXML_XSD_DIR not set)
+lists & checks ok
+errors & ids ok
+paybill discount ok
+ALL OK
+rows: [('Items', '2', 'Ready'), ('Items', '3', 'Ready'), ('Items', '4', 'Error'), ('Vendors', '2', 'Ready'), ('Invoices', '2', 'Ready'), ('Invoices', '3', 'Ready'), ('Bills', '2-3', 'Ready'), ('Bills', '4', 'Ready'), ('Bill Payments', '2-3', 'Ready'), ('Bill Payments', '4', 'Ready'), ('Cheques', '2', 'Ready'), ('Journal Entries', '2-3', 'Ready'), ('Journal Entries', '4-5', 'Error'), ('Deposits', '2', 'Ready'), ('Transfers', '2', 'Ready')]
+log rows: 13
+IMPORT OK
+pywin32 ok
+openpyxl 3.1.5
+lists: 10 accounts, 3 items, 1 vendors, 2 customers
+agent inbox ok
+agent auto-post ok
+agent questions ok
+saved: 11 records -> Account, Bill, Bill Payment, Cheque, Customer, Deposit, Invoice, Item, Journal Entry, Transfer, Vendor
+template ok
+SELFTEST OK
