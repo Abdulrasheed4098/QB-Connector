@@ -82,6 +82,11 @@ def all_requests():
         for raw in raws:
             r = check(kind, raw, None)
             out.append((kind, qbxml.build(r)))
+    mv = check("paybill_bank", dict(txn_id="41F074-1794352803", from_bank="MCB Gulberg",
+                                    to_bank="UBL Bahria Town 4007", amount="12000"), None)
+    mv["edit_seq"] = "1794352803"
+    out.append(("paybill_bank", qbxml.build(mv)))
+    out.append(("query", qbxml.billpay_by_id_query("41F074-1794352803")))
     out.append(("query", qbxml.open_bills_query("Pepsi Co")))
     out.append(("query", qbxml.bills_by_id_query(["1A2B-123", "1A2C-124"])))
     from qbconnector.agent import PRESETS
@@ -230,9 +235,58 @@ def test_paybill_discount():
     print("paybill discount ok")
 
 
+
+
+def test_paybill_bank():
+    """Move a bill payment to another bank: checked against QuickBooks first."""
+    from decimal import Decimal
+    from qbconnector import poster
+
+    class FakeQB:
+        def __init__(self, bank, amount):
+            self.bank, self.amount, self.sent = bank, amount, []
+
+        def send(self, xml):
+            self.sent.append(xml)
+            if "BillPaymentCheckQueryRq" in xml:
+                return ('<?xml version="1.0" ?><QBXML><QBXMLMsgsRs><BillPaymentCheckQueryRs statusCode="0" '
+                        'statusSeverity="Info" statusMessage="Status OK"><BillPaymentCheckRet><TxnID>T-1</TxnID>'
+                        '<EditSequence>777</EditSequence><PayeeEntityRef><FullName>Pepsi Co</FullName>'
+                        f'</PayeeEntityRef><TxnDate>2026-11-05</TxnDate><BankAccountRef><FullName>{self.bank}'
+                        f'</FullName></BankAccountRef><Amount>{self.amount}</Amount></BillPaymentCheckRet>'
+                        '</BillPaymentCheckQueryRs></QBXMLMsgsRs></QBXML>')
+            return ('<?xml version="1.0" ?><QBXML><QBXMLMsgsRs><BillPaymentCheckModRs statusCode="0" '
+                    'statusSeverity="Info" statusMessage="Status OK"><BillPaymentCheckRet><TxnID>T-1</TxnID>'
+                    '</BillPaymentCheckRet></BillPaymentCheckModRs></QBXMLMsgsRs></QBXML>')
+
+    rec = lambda: check("paybill_bank", dict(txn_id="T-1", from_bank="UBL Liberty Market Branch",
+                                             to_bank="UBL Bahria Town 4007", amount="12,000"), None)
+    r = rec()
+    assert r["amount"] == Decimal("12000")
+    poster.check_paybill_bank(FakeQB("UBL Liberty Market Branch", "12000.00"), r)
+    assert r["edit_seq"] == "777" and r["vendor"] == "Pepsi Co"
+    x = qbxml.build(r)
+    assert "<EditSequence>777</EditSequence>" in x and "UBL Bahria Town 4007" in x and "AppliedToTxnMod" not in x
+    for bank, amount, msg in [("MCB Gulberg", "12000.00", "not 'UBL Liberty"),
+                              ("UBL Bahria Town 4007", "12000.00", "Already in"),
+                              ("UBL Liberty Market Branch", "11000.00", "not 12,000.00")]:
+        try:
+            poster.check_paybill_bank(FakeQB(bank, amount), rec())
+            raise AssertionError("should have been rejected")
+        except qbxml.QBError as e:
+            assert msg in e.message, e.message
+    try:
+        check("paybill_bank", dict(txn_id="", from_bank="A", to_bank="A"), None)
+        raise AssertionError("should fail")
+    except Exception as e:
+        assert "TxnID" in str(e) and "same" in str(e)
+    print("paybill_bank ok")
+
+
 if __name__ == "__main__":
     test_schema()
     test_lists_and_checks()
     test_errors_and_ids()
     test_paybill_discount()
+    test_paybill_bank()
     print("ALL OK")

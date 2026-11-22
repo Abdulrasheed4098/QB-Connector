@@ -17,7 +17,7 @@ Request file:
      "lines": [{"item": "Bank Discount Receivable", "amount": "45250.50"}]}
   ]
 }
-kind: invoice, bill, paybill, cheque, journal, deposit, transfer, item, vendor, customer, account
+kind: invoice, bill, paybill, paybill_bank, cheque, journal, deposit, transfer, item, vendor, customer, account
 (same fields as the screens; see records.py). Nothing is posted until the user clicks Post.
 
 Bill payment with WHT (QuickBooks "Set Discount"):
@@ -28,6 +28,12 @@ Bill payment with WHT (QuickBooks "Set Discount"):
   amount = paid by cheque (cheque amount = total of amounts); discount clears the WHT;
   bill_amount (optional) = bill amount on the payment voucher: if QuickBooks' bill amount is
   different, the entry is NOT posted and the result says "Amount differs ...".
+
+Move a bill payment to another bank account (booked to the wrong bank):
+    {"kind": "paybill_bank", "txn_id": "41F074-1794352803", "vendor": "Waqas Beef", "ref": "",
+     "from_bank": "UBL Liberty Market Branch", "to_bank": "UBL Bahria Town 4007", "amount": "12000"}
+  Only the bank changes; bills paid, amounts, discount, cheque no. and date stay the same.
+  Not changed if QuickBooks shows another bank than from_bank, or a different amount.
 """
 import datetime as _dt
 import json

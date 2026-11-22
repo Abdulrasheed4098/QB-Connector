@@ -221,10 +221,17 @@ def paybill_add(r):
     return _add("BillPaymentCheckAdd", body)
 
 
+def paybill_bank_mod(r):
+    """Change only the bank account of an existing bill payment (needs txn_id and edit_seq, see
+    poster.check_paybill_bank). Without AppliedToTxnMod, QuickBooks keeps the bills it pays."""
+    body = el("TxnID", r["txn_id"]) + el("EditSequence", r["edit_seq"]) + ref("BankAccountRef", r["to_bank"])
+    return f"<BillPaymentCheckModRq><BillPaymentCheckMod>{body}</BillPaymentCheckMod></BillPaymentCheckModRq>"
+
+
 BUILDERS = {
     "item": item_add, "vendor": vendor_add, "customer": customer_add, "account": account_add,
     "invoice": invoice_add, "bill": bill_add, "cheque": cheque_add, "journal": journal_add, "deposit": deposit_add,
-    "transfer": transfer_add, "paybill": paybill_add,
+    "transfer": transfer_add, "paybill": paybill_add, "paybill_bank": paybill_bank_mod,
 }
 
 
@@ -255,6 +262,18 @@ def bills_by_id_query(txn_ids):
             + "".join(f"<IncludeRetElement>{t}</IncludeRetElement>" for t in
                       ("TxnID", "TxnDate", "RefNumber", "DueDate", "AmountDue", "OpenAmount", "IsPaid", "Memo"))
             + "</BillQueryRq>")
+
+
+def billpay_by_id_query(txn_id):
+    return "<BillPaymentCheckQueryRq>" + el("TxnID", txn_id) + "</BillPaymentCheckQueryRq>"
+
+
+def read_billpay(rs):
+    for n in rs.rets:
+        return {"txn_id": txt(n, "TxnID"), "edit_seq": txt(n, "EditSequence"),
+                "vendor": txt(n, "PayeeEntityRef/FullName"), "bank": txt(n, "BankAccountRef/FullName"),
+                "amount": txt(n, "Amount", "0"), "ref": txt(n, "RefNumber"), "date": txt(n, "TxnDate")}
+    return None
 
 
 def open_bills_query(vendor):

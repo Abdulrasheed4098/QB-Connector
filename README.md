@@ -7,7 +7,7 @@ through the official QuickBooks SDK. You don't need to type entries into QuickBo
 | Lists | Transactions |
 |---|---|
 | Items: Inventory Part, Non-inventory Part, Service, Other Charge (incl. sub-items) | Enter Bill (expense and item lines, class, customer:job) |
-| Vendors (address, NTN, terms, opening balance) | Pay Bills (shows the vendor's unpaid bills; full or part payment) |
+| Vendors (address, NTN, terms, opening balance) | Pay Bills (shows the vendor's unpaid bills; full or part payment); Agent Inbox can also move a bill payment to another bank |
 | Customers / Jobs | Create Invoice (bank discount claims: bank as Customer:Job, Class, Bank Discount Receivable item; invoice number saved exactly as typed, or QuickBooks numbers it) |
 | | Write Cheque (or "To be printed") |
 | Accounts (all types, sub-accounts, opening balance) | Journal Entry (checks debits = credits) |
