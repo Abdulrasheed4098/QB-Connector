@@ -23,6 +23,7 @@ KINDS = {
     "journal": "Journal Entry",
     "deposit": "Deposit",
     "transfer": "Transfer",
+    "paybill_bank": "Bill Payment - change bank",
 }
 
 ITEM_TYPES = {
@@ -590,11 +591,37 @@ def check_paybill(raw, lists=None):
     return r
 
 
+def check_paybill_bank(raw, lists=None):
+    """Move an existing bill payment (cheque) to another bank account, e.g. a payment booked to the
+    wrong bank. Only the bank changes; bills paid, amounts, discount, cheque no. and date stay.
+    from_bank and amount are checked against QuickBooks before anything is changed."""
+    p = Problems()
+    txn = clean(raw.get("txn_id"))
+    if not txn:
+        p.add("TxnID of the bill payment is required")
+    r = {
+        "kind": "paybill_bank",
+        "txn_id": txn,
+        "vendor": clean(raw.get("vendor")) or "",
+        "ref": clean(raw.get("ref")) or "",
+        "from_bank": _ref(p, lists, "accounts", "From bank", raw.get("from_bank"), required=True),
+        "to_bank": _ref(p, lists, "accounts", "To bank", raw.get("to_bank"), required=True),
+        "amount": p.run(parse_amount, raw.get("amount"), "Payment amount", required=False)
+        if not is_blank(raw.get("amount")) else None,
+        "memo": clean(raw.get("memo")) or "",
+    }
+    if r["from_bank"] and r["to_bank"] and r["from_bank"] == r["to_bank"]:
+        p.add("From bank and To bank are the same")
+    p.raise_if_any()
+    r["total"] = r["amount"]
+    return r
+
+
 CHECKERS = {
     "item": check_item, "vendor": check_vendor, "customer": check_customer,
     "account": check_account, "invoice": check_invoice, "bill": check_bill, "cheque": check_cheque,
     "journal": check_journal, "deposit": check_deposit, "transfer": check_transfer,
-    "paybill": check_paybill,
+    "paybill": check_paybill, "paybill_bank": check_paybill_bank,
 }
 
 
@@ -619,6 +646,9 @@ def describe(r):
         return r.get("ref") or ("To print" if r["to_print"] else ""), r.get("payee") or "", r["total"]
     if k == "paybill":
         return r.get("ref") or ("To print" if r["to_print"] else ""), r["vendor"], r["total"]
+    if k == "paybill_bank":
+        return r.get("ref") or r["txn_id"], f"{r.get('vendor') or ''} {r['from_bank']} -> {r['to_bank']}".strip(), \
+            r.get("amount")
     if k == "journal":
         return r.get("ref") or "", "", r["total"]
     if k == "deposit":

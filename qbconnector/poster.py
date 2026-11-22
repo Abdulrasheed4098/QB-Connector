@@ -85,6 +85,32 @@ def check_bill_amounts(qb, record):
     return record
 
 
+def check_paybill_bank(qb, record):
+    """Before moving a bill payment to another bank: it must exist, still be in from_bank,
+    and (when given) have the expected amount. Fills in the EditSequence QuickBooks needs."""
+    req = qbxml.billpay_by_id_query(record["txn_id"])
+    rs = qbxml.parse_response(qb.send(qbxml.envelope(req)))[0]
+    if not rs.ok:
+        raise qbxml.QBError(rs.code, rs.message, req)
+    cur = qbxml.read_billpay(rs)
+    if cur is None:
+        raise qbxml.QBError("-", f"Bill payment {record['txn_id']} not found in QuickBooks")
+    problems = []
+    if cur["bank"].strip().lower() == record["to_bank"].strip().lower():
+        problems.append(f"Already in '{cur['bank']}', nothing to change")
+    elif cur["bank"].strip().lower() != record["from_bank"].strip().lower():
+        problems.append(f"Payment is in '{cur['bank']}' in QuickBooks, not '{record['from_bank']}'")
+    if record.get("amount") is not None and Decimal(cur["amount"] or "0") != record["amount"]:
+        problems.append(f"Payment is {Decimal(cur['amount'] or '0'):,.2f} in QuickBooks, "
+                        f"not {record['amount']:,.2f}")
+    if problems:
+        raise qbxml.QBError("-", "\n".join(problems))
+    record["edit_seq"] = cur["edit_seq"]
+    if not record.get("vendor"):
+        record["vendor"] = cur["vendor"]
+    return record
+
+
 def post(qb, record, company="", source="Screen"):
     """Send one checked record to QuickBooks. Returns the new TxnID/ListID.
     Raises QBError (rejected by QuickBooks) or QBConnectError (connection problem).
@@ -99,6 +125,8 @@ def post(qb, record, company="", source="Screen"):
             resolve_bills(qb, record)
             if any(b.get("discount") or b.get("bill_amount") is not None for b in record["bills"]):
                 check_bill_amounts(qb, record)
+        elif record["kind"] == "paybill_bank":
+            check_paybill_bank(qb, record)
         req = qbxml.envelope(qbxml.build(record))
         answer = qb.send(req)
         rs = qbxml.parse_response(answer)[0]
