@@ -1,0 +1,9 @@
+pywin32 ok
+openpyxl 3.1.5
+lists: 10 accounts, 3 items, 1 vendors, 2 customers
+agent inbox ok
+agent auto-post ok
+agent questions ok
+saved: 11 records -> Account, Bill, Bill Payment, Cheque, Customer, Deposit, Invoice, Item, Journal Entry, Transfer, Vendor
+template ok
+SELFTEST OK
